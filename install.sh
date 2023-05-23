@@ -642,6 +642,7 @@ fix-nfs-msd() {
 # Second part will start the necessary kvmd services
 # added option to re-install by adding -f parameter (for use as platform switcher)
 PYTHON_VERSION=$( python3 -V | awk '{print $2}' | cut -d'.' -f1,2 )
+KVMD_DIR=$(pwd)
 if [[ $( grep kvmd /etc/passwd | wc -l ) -eq 0 || "$1" == "-f" ]]; then
   printf "\nRunning part 1 of PiKVM installer script for Armbian by @srepac\n"
   get-packages
@@ -670,7 +671,7 @@ if [[ $( grep kvmd /etc/passwd | wc -l ) -eq 0 || "$1" == "-f" ]]; then
 else
   printf "\nRunning part 2 of PiKVM installer script for Armbian by @srepac\n"
   ### run these to make sure kvmd users are created ###
-
+  
   echo "==> Ensuring KVMD users and groups ..."
   systemd-sysusers /usr/lib/sysusers.d/kvmd.conf
   systemd-sysusers /usr/lib/sysusers.d/kvmd-webterm.conf
@@ -695,6 +696,7 @@ fi
 systemctl status kvmd-nginx kvmd-otg kvmd-webterm kvmd kvmd-fix | grep Loaded
 
 ### I uploaded all these into github on 05/22/23 -- so just copy them into correct location
+cd $KVMD_DIR
 cp -rf pistat /usr/local/bin/pistat
 cp -rf pi-temp /usr/local/bin/pi-temp
 cp -rf pikvm-info /usr/local/bin/pikvm-info
