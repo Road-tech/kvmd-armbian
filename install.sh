@@ -52,7 +52,8 @@ if [[ ! -e /boot/config.txt && -e /boot/firmware/config.txt ]]; then
   ln -sf /boot/firmware/config.txt /boot/config.txt
 fi
 
-MAKER=$(tr -d '\0' < /proc/device-tree/model | awk '{print $1}')
+# MAKER=$(tr -d '\0' < /proc/device-tree/model | awk '{print $1}')
+MAKER="FriendlyARM"
 
 press-enter() {
   echo
@@ -645,7 +646,7 @@ PYTHON_VERSION=$( python3 -V | awk '{print $2}' | cut -d'.' -f1,2 )
 KVMD_DIR=$(pwd)
 if [[ $( grep kvmd /etc/passwd | wc -l ) -eq 0 || "$1" == "-f" ]]; then
   printf "\nRunning part 1 of PiKVM installer script for Armbian by @srepac\n"
-  get-packages
+  # get-packages
   get-platform
   boot-files
   install-kvmd-pkgs
