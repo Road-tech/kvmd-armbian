@@ -653,7 +653,7 @@ if [[ $( grep kvmd /etc/passwd | wc -l ) -eq 0 || "$1" == "-f" ]]; then
   create-override
   gen-ssl-certs
   fix-udevrules
-  install-dependencies
+  # install-dependencies
   otg-devices
   armbian-packages
   systemctl disable --now janus
