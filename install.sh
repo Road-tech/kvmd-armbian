@@ -668,7 +668,7 @@ if [[ $( grep kvmd /etc/passwd | wc -l ) -eq 0 || "$1" == "-f" ]]; then
   fi
   touch /root/kvmd-armbian/.part1_install_yet
   # Ask user to press CTRL+C before reboot or ENTER to proceed with reboot
-  # press-enter
+  press-enter
   reboot
 else
   printf "\nRunning part 2 of PiKVM installer script for Armbian by @srepac\n"
