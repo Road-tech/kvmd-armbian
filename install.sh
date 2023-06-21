@@ -642,6 +642,7 @@ fix-nfs-msd() {
 # First part requires a reboot in order to create kvmd users and groups
 # Second part will start the necessary kvmd services
 # added option to re-install by adding -f parameter (for use as platform switcher)
+cd /root/kvmd-armbian
 PYTHON_VERSION=$( python3 -V | awk '{print $2}' | cut -d'.' -f1,2 )
 KVMD_DIR=$(pwd)
 if [[ $( grep kvmd /etc/passwd | wc -l ) -eq 0 || "$1" == "-f" ]]; then
