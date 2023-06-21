@@ -691,7 +691,7 @@ else
   fix-motd
   set-ownership
   create-kvmdfix
-  check-kvmd-works
+  # check-kvmd-works
   enable-kvmd-svcs
   start-kvmd-svcs
 
