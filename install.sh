@@ -642,6 +642,13 @@ fix-nfs-msd() {
 # First part requires a reboot in order to create kvmd users and groups
 # Second part will start the necessary kvmd services
 # added option to re-install by adding -f parameter (for use as platform switcher)
+
+echo "-------------------------------------------------------------------------------"
+echo "-                        Start to install PiKVM system                        -"
+echo "-                             开始安装 PiKVM 系统                              -"
+echo "-                             第一部分安装后会重启                              -"
+echo "-------------------------------------------------------------------------------"
+
 cd /root/kvmd-armbian
 PYTHON_VERSION=$( python3 -V | awk '{print $2}' | cut -d'.' -f1,2 )
 KVMD_DIR=$(pwd)
