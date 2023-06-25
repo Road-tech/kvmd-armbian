@@ -643,15 +643,14 @@ fix-nfs-msd() {
 # Second part will start the necessary kvmd services
 # added option to re-install by adding -f parameter (for use as platform switcher)
 
-echo "-------------------------------------------------------------------------------"
-echo "-                        Start to install PiKVM system                        -"
-echo "-                             开始安装 PiKVM 系统                             -"
-echo "-------------------------------------------------------------------------------"
-
 cd /root/kvmd-armbian
 PYTHON_VERSION=$( python3 -V | awk '{print $2}' | cut -d'.' -f1,2 )
 KVMD_DIR=$(pwd)
 if [[ $( grep kvmd /etc/passwd | wc -l ) -eq 0 || "$1" == "-f" ]]; then
+  echo "-------------------------------------------------------------------------------"
+  echo "-                        Start to install PiKVM system                        -"
+  echo "-                             开始安装 PiKVM 系统                             -"
+  echo "-------------------------------------------------------------------------------"
   printf "\nRunning part 1 of PiKVM installer script for Armbian by @srepac\n"
   # get-packages
   get-platform
@@ -676,8 +675,15 @@ if [[ $( grep kvmd /etc/passwd | wc -l ) -eq 0 || "$1" == "-f" ]]; then
   touch /root/kvmd-armbian/.part1_install_yet
   # Ask user to press CTRL+C before reboot or ENTER to proceed with reboot
   # press-enter
+  echo "-------------------------------------------------------------------------------"
+  echo "-                      完成PiKVM第一部分的安装，重启后继续。                    -"
+  echo "-------------------------------------------------------------------------------"
   reboot
 else
+  echo "-------------------------------------------------------------------------------"
+  echo "-        Running part 2 of PiKVM installer script for Armbian by @srepac      -"
+  echo "-                             开始PiKVM第二部分的安装。                         -"
+  echo "-------------------------------------------------------------------------------"
   printf "\nRunning part 2 of PiKVM installer script for Armbian by @srepac\n"
   ### run these to make sure kvmd users are created ###
   
@@ -725,3 +731,6 @@ sed -i -e "s/localhost.localdomain/`hostname`/g" /etc/kvmd/meta.yaml
 if [ -e /etc/kvmd/htpasswd.save ]; then cp /etc/kvmd/htpasswd.save /etc/kvmd/htpasswd; fi
 
 fix-nfs-msd
+echo "-------------------------------------------------------------------------------"
+echo "-                完成PiKVM的安装，请完成后续Root密码修改等操作。                 -"
+echo "-------------------------------------------------------------------------------"
