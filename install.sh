@@ -676,7 +676,8 @@ if [[ $( grep kvmd /etc/passwd | wc -l ) -eq 0 || "$1" == "-f" ]]; then
   # Ask user to press CTRL+C before reboot or ENTER to proceed with reboot
   # press-enter
   echo "-------------------------------------------------------------------------------"
-  echo "-                      完成PiKVM第一部分的安装，重启后继续。                    -"
+  echo "-                      完成PiKVM第一部分的安装，即将重启。                      -"
+  echo "-                       请在重启后重新登录完成后续安装。                        -"
   echo "-------------------------------------------------------------------------------"
   reboot
 else
