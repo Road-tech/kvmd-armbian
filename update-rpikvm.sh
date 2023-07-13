@@ -1,9 +1,9 @@
 #!/bin/bash
 #
-## Update script for Raspbian
+## Update script for Raspbian/Armbian
 #
 ###
-# Updated on 20220211 1130PDT
+# Updated on 20230628 1930PDT
 ###
 PIKVMREPO="https://pikvm.org/repos/rpi4"
 PIKVMREPO="https://files.pikvm.org/repos/arch/rpi4/"    # as of 11/05/2021
@@ -45,6 +45,8 @@ save-configs() {
 
   # Save mouse settings (in case you changed move freq to 10ms from 100ms)
   cp /usr/share/kvmd/web/share/js/kvm/mouse.js /usr/share/kvmd/web/share/js/kvm/mouse.js.save
+
+  cp /etc/kvmd/nginx/listen-https.conf /etc/kvmd/nginx/listen-https.conf.save
 } # end save-configs
 
 restore-configs() {
@@ -67,6 +69,8 @@ restore-configs() {
 
   # Restore mouse settings (in case you changed move freq to 10ms from 100ms)
   cp /usr/share/kvmd/web/share/js/kvm/mouse.js.save /usr/share/kvmd/web/share/js/kvm/mouse.js
+
+  cp /etc/kvmd/nginx/listen-https.conf.save /etc/kvmd/nginx/listen-https.conf
 } # end restore-configs
 
 set-ownership() {
@@ -113,16 +117,16 @@ perform-update() {
     tar xfJ $KVMDCACHE/$KVMDFILE
     tar xfJ $KVMDCACHE/$KVMDPLATFORMFILE
 
-    rm $PYTHONPACKAGES/kvmd*egg-info
-    ln -sf /usr/lib/python${PYTHON}/site-packages/kvmd*egg* $PYTHONPACKAGES
+    rm $PYTHONPACKAGES/kvmd*info*
+    ln -sf /usr/lib/python${PYTHON}/site-packages/kvmd*info* $PYTHONPACKAGES
 
     echo Updated pikvm to kvmd-platform-$INSTALLED_PLATFORM-$KVMDVER on $( date ) >> $KVMDCACHE/installed_ver.txt
     "
 
     cd /; tar xfJ $KVMDCACHE/$KVMDFILE 2> /dev/null
     tar xfJ $KVMDCACHE/$KVMDPLATFORMFILE 2> /dev/null
-    rm $PYTHONPACKAGES/kvmd*egg-info 2> /dev/null
-    ln -sf /usr/lib/python${PYTHON}/site-packages/kvmd*egg* $PYTHONPACKAGES 2> /dev/null
+    rm $PYTHONPACKAGES/kvmd*info* 2> /dev/null
+    ln -sf /usr/lib/python${PYTHON}/site-packages/kvmd*info* $PYTHONPACKAGES 2> /dev/null
     echo "Updated pikvm to kvmd-platform-$INSTALLED_PLATFORM-$KVMDVER on $( date )" >> $KVMDCACHE/installed_ver.txt
   fi
 } # end perform-update
@@ -146,7 +150,8 @@ build-ustreamer() {
   make WITH_SYSTEMD=1 WITH_GPIO=1 WITH_SETPROCTITLE=1
   make install
   # kvmd service is looking for /usr/bin/ustreamer
-  cp -f /usr/local/bin/ustreamer /usr/local/bin/ustreamer-dump /usr/bin/
+  ln -sf /usr/local/bin/ustreamer /usr/bin/
+  ln -sf /usr/local/bin/ustreamer-dump /usr/bin/
 } # end build-ustreamer
 
 update-ustreamer() {
@@ -198,9 +203,84 @@ misc-fixes() {
   set +x
 }
 
+fix-python311() {
+  printf "\n-> python3.11 kvmd path fix\n\n"
+  cd /usr/lib/python3/dist-packages/; ls -ld kvmd*
+
+  if [ $( ls -ld kvmd | grep -c 3.10 ) -gt 0 ]; then
+    ln -sf /usr/lib/python3.11/site-packages/kvmd .
+    ls -ld kvmd*
+  else
+    printf "\nkvmd is already symlinked to python3.11 version.  Nothing to do.\n"
+  fi
+}
+
+fix-nfs-msd() {
+  NAME="aiofiles.tar"
+  wget -O $NAME https://kvmnerds.com/RPiKVM/$NAME 2> /dev/null
+  
+  LOCATION="/usr/lib/python3.11/site-packages"
+  echo "-> Extracting $NAME into $LOCATION"
+  tar xvf $NAME -C $LOCATION
+
+  echo "-> Renaming original aiofiles and creating symlink to correct aiofiles"
+  cd /usr/lib/python3/dist-packages
+  mv aiofiles aiofiles.$(date +%Y%m%d.%H%M)
+  ln -s $LOCATION/aiofiles .
+  ls -ld aiofiles*
+}
+
+fix-nginx() {
+  #set -x
+  KERNEL=$( uname -r | awk -F\- '{print $1}' )
+  ARCH=$( uname -r | awk -F\- '{print $NF}' )
+  echo "KERNEL:  $KERNEL   ARCH:  $ARCH"
+  case $ARCH in
+    ARCH) SEARCHKEY=nginx-mainline;;
+    *) SEARCHKEY="nginx/";;
+  esac
+
+  HTTPSCONF="/etc/kvmd/nginx/listen-https.conf"
+  echo "HTTPSCONF BEFORE:  $HTTPSCONF"
+  cat $HTTPSCONF
+
+  if [[ ! -e /usr/local/bin/pikvm-info || ! -e /tmp/pacmanquery ]]; then
+    wget -O /usr/local/bin/pikvm-info https://kvmnerds.com/PiKVM/pikvm-info 2> /dev/null
+    chmod +x /usr/local/bin/pikvm-info
+    echo "Getting list of packages installed..."
+    pikvm-info > /dev/null    ### this generates /tmp/pacmanquery with list of installed pkgs
+  fi
+
+  NGINXVER=$( grep $SEARCHKEY /tmp/pacmanquery | awk '{print $1}' | cut -d'.' -f1,2 )
+  echo
+  echo "NGINX version installed:  $NGINXVER"
+
+  case $NGINXVER in
+    1.2[56789]|1.3*|1.4*|1.5*)   # nginx version 1.25 and higher
+      cat << NEW_CONF > $HTTPSCONF
+listen 443 ssl;
+listen [::]:443 ssl;
+http2 on;
+NEW_CONF
+      ;;
+
+    1.18|*)   # nginx version 1.18 and lower
+      cat << ORIG_CONF > $HTTPSCONF
+listen 443 ssl http2;
+listen [::]:443 ssl;
+ORIG_CONF
+      ;;
+
+  esac
+
+  echo "HTTPSCONF AFTER:  $HTTPSCONF"
+  cat $HTTPSCONF
+  set +x
+} # end fix-nginx
+
+
 
 ### MAIN STARTS HERE ###
-REPOVER=$(ls -ltr $KVMDCACHE/ustreamer* | awk -F\/ '{print $NF}' | cut -d'-' -f2 | tail -1)
 PYTHONPACKAGES=$( ls -ld /usr/lib/python3*/dist-packages | awk '{print $NF}' | tail -1 )
 
 printf "\n-> Stopping kvmd service.\n"; systemctl stop kvmd
@@ -208,17 +288,30 @@ printf "\n-> Stopping kvmd service.\n"; systemctl stop kvmd
 get-installed-platform
 save-configs
 get-packages
+
+REPOVER=$(ls -ltr $KVMDCACHE/ustreamer* | awk -F\/ '{print $NF}' | cut -d'-' -f2 | tail -1)
+
 perform-update
 update-ustreamer
 set-ownership
 restore-configs
 update-logo
 misc-fixes
+fix-python311
+fix-nfs-msd
+fix-nginx
+
+ln -sf python3 /usr/bin/python
 
 ### add ms unit of measure to Polling rate in webui ###
 sed -i -e 's/ interval:/ interval (ms):/g' /usr/share/kvmd/web/kvm/index.html
 
 wget -O /usr/bin/armbian-motd https://raw.githubusercontent.com/srepac/kvmd-armbian/master/armbian/armbian-motd > /dev/null 2> /dev/null
 
-printf "\n-> Restarting kvmd service.\n"; systemctl daemon-reload; systemctl restart kvmd
-printf "\nPlease point browser to https://$(hostname) for confirmation.\n"
+### if kvmd service is enabled, then restart service and show message ###
+if systemctl is-enabled -q kvmd; then
+  printf "\n-> Restarting kvmd service.\n"; systemctl daemon-reload; systemctl restart kvmd
+  printf "\nPlease point browser to https://$(hostname) for confirmation.\n"
+else
+  printf "\nkvmd service is disabled.  Not starting service\n"
+fi
