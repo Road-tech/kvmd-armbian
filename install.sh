@@ -17,8 +17,8 @@
 '
 # NOTE:  This was tested on a new install of raspbian desktop and lite versions, but should also work on an existing install.
 #
-# Last change 20230201 1025 PDT
-# VER=2.1
+# Last change 20230630 0945 PDT
+# VER=3.0
 set +x
 PIKVMREPO="https://files.pikvm.org/repos/arch/rpi4"
 KVMDCACHE="/var/cache/kvmd"
@@ -52,8 +52,7 @@ if [[ ! -e /boot/config.txt && -e /boot/firmware/config.txt ]]; then
   ln -sf /boot/firmware/config.txt /boot/config.txt
 fi
 
-# MAKER=$(tr -d '\0' < /proc/device-tree/model | awk '{print $1}')
-MAKER="FriendlyARM"
+MAKER=$(tr -d '\0' < /proc/device-tree/model | awk '{print $1}')
 
 press-enter() {
   echo
@@ -136,7 +135,7 @@ install-tc358743() {
   curl https://www.linux-projects.org/listing/uv4l_repo/lpkey.asc | apt-key add -
   echo "deb https://www.linux-projects.org/listing/uv4l_repo/raspbian/stretch stretch main" | tee /etc/apt/sources.list.d/uv4l.list
 
-  apt-get update > /dev/null
+  #apt-get update > /dev/null
   echo "apt-get install uv4l-tc358743-extras -y"
   apt-get install uv4l-tc358743-extras -y > /dev/null
 } # install package for tc358743
@@ -355,14 +354,18 @@ install-dependencies() {
   echo
   echo "-> Installing dependencies for pikvm"
 
-  apt-get update > /dev/null
+  #apt-get update > /dev/null
   echo "apt install -y nginx python3 net-tools bc expect v4l-utils iptables vim dos2unix screen tmate nfs-common gpiod ffmpeg dialog iptables dnsmasq git python3-pip tesseract-ocr tesseract-ocr-eng libasound2-dev libsndfile-dev libspeexdsp-dev"
   apt install -y nginx python3 net-tools bc expect v4l-utils iptables vim dos2unix screen tmate nfs-common gpiod ffmpeg dialog iptables dnsmasq git python3-pip tesseract-ocr tesseract-ocr-eng libasound2-dev libsndfile-dev libspeexdsp-dev > /dev/null
 
   install-python-packages
 
   echo "-> Install python3 modules dbus_next and zstandard"
-  pip3 install dbus_next zstandard
+  if [[ "$PYTHONVER" == "3.11" ]]; then
+    apt install -y python3-dbus-next python3-zstandard
+  else
+    pip3 install dbus_next zstandard
+  fi
 
   echo "-> Make tesseract data link"
   ln -s /usr/share/tesseract-ocr/*/tessdata /usr/share/tessdata
@@ -635,31 +638,76 @@ fix-nfs-msd() {
   ls -ld aiofiles*
 }
 
+fix-nginx() {
+  #set -x
+  KERNEL=$( uname -r | awk -F\- '{print $1}' )
+  ARCH=$( uname -r | awk -F\- '{print $NF}' )
+  echo "KERNEL:  $KERNEL   ARCH:  $ARCH"
+  case $ARCH in
+    ARCH) SEARCHKEY=nginx-mainline;;
+    *) SEARCHKEY="nginx/";;
+  esac
+
+  HTTPSCONF="/etc/kvmd/nginx/listen-https.conf"
+  echo "HTTPSCONF BEFORE:  $HTTPSCONF"
+  cat $HTTPSCONF
+
+  if [[ ! -e /usr/local/bin/pikvm-info || ! -e /tmp/pacmanquery ]]; then
+    wget -O /usr/local/bin/pikvm-info https://kvmnerds.com/PiKVM/pikvm-info 2> /dev/null
+    chmod +x /usr/local/bin/pikvm-info
+    echo "Getting list of packages installed..."
+    pikvm-info > /dev/null    ### this generates /tmp/pacmanquery with list of installed pkgs
+  fi
+
+  NGINXVER=$( grep $SEARCHKEY /tmp/pacmanquery | awk '{print $1}' | cut -d'.' -f1,2 )
+  echo
+  echo "NGINX version installed:  $NGINXVER"
+
+  case $NGINXVER in
+    1.2[56789]|1.3*|1.4*|1.5*)   # nginx version 1.25 and higher
+      cat << NEW_CONF > $HTTPSCONF
+listen 443 ssl;
+listen [::]:443 ssl;
+http2 on;
+NEW_CONF
+      ;;
+
+    1.18|*)   # nginx version 1.18 and lower
+      cat << ORIG_CONF > $HTTPSCONF
+listen 443 ssl http2;
+listen [::]:443 ssl;
+ORIG_CONF
+      ;;
+
+  esac
+
+  echo "HTTPSCONF AFTER:  $HTTPSCONF"
+  cat $HTTPSCONF
+  set +x
+} # end fix-nginx
+
 
 
 ### MAIN STARTS HERE ###
 # Install is done in two parts
 # First part requires a reboot in order to create kvmd users and groups
 # Second part will start the necessary kvmd services
-# added option to re-install by adding -f parameter (for use as platform switcher)
 
-cd /root/kvmd-armbian
+### fix for kvmd 3.230 and higher
+ln -sf python3 /usr/bin/python
+
+# added option to re-install by adding -f parameter (for use as platform switcher)
 PYTHON_VERSION=$( python3 -V | awk '{print $2}' | cut -d'.' -f1,2 )
-KVMD_DIR=$(pwd)
 if [[ $( grep kvmd /etc/passwd | wc -l ) -eq 0 || "$1" == "-f" ]]; then
-  echo "-------------------------------------------------------------------------------"
-  echo "-                        Start to install PiKVM system                        -"
-  echo "-                             开始安装 PiKVM 系统                             -"
-  echo "-------------------------------------------------------------------------------"
   printf "\nRunning part 1 of PiKVM installer script for Armbian by @srepac\n"
-  # get-packages
+  get-packages
   get-platform
   boot-files
   install-kvmd-pkgs
   create-override
   gen-ssl-certs
   fix-udevrules
-  # install-dependencies
+  install-dependencies
   otg-devices
   armbian-packages
   systemctl disable --now janus
@@ -672,22 +720,13 @@ if [[ $( grep kvmd /etc/passwd | wc -l ) -eq 0 || "$1" == "-f" ]]; then
   if [[ $( python3 -V | awk '{print $2}' | cut -d'.' -f1,2 ) == "3.7" ]]; then
     sed -i -e 's/reversed//g' /usr/lib/python3.1*/site-packages/kvmd/keyboard/printer.py
   fi
-  touch /root/kvmd-armbian/.part1_install_yet
   # Ask user to press CTRL+C before reboot or ENTER to proceed with reboot
-  # press-enter
-  echo "-------------------------------------------------------------------------------"
-  echo "-                      完成PiKVM第一部分的安装，即将重启。                      -"
-  echo "-                       请在重启后重新登录完成后续安装。                        -"
-  echo "-------------------------------------------------------------------------------"
+  press-enter
   reboot
 else
-  echo "-------------------------------------------------------------------------------"
-  echo "-        Running part 2 of PiKVM installer script for Armbian by @srepac      -"
-  echo "-                             开始PiKVM第二部分的安装。                         -"
-  echo "-------------------------------------------------------------------------------"
   printf "\nRunning part 2 of PiKVM installer script for Armbian by @srepac\n"
   ### run these to make sure kvmd users are created ###
-  
+
   echo "==> Ensuring KVMD users and groups ..."
   systemd-sysusers /usr/lib/sysusers.d/kvmd.conf
   systemd-sysusers /usr/lib/sysusers.d/kvmd-webterm.conf
@@ -696,9 +735,11 @@ else
   fix-python-symlinks
   fix-webterm
   fix-motd
+  fix-nfs-msd
+  fix-nginx
   set-ownership
   create-kvmdfix
-  # check-kvmd-works
+  check-kvmd-works
   enable-kvmd-svcs
   start-kvmd-svcs
 
@@ -712,7 +753,7 @@ fi
 systemctl status kvmd-nginx kvmd-otg kvmd-webterm kvmd kvmd-fix | grep Loaded
 
 ### I uploaded all these into github on 05/22/23 -- so just copy them into correct location
-cd $KVMD_DIR
+cd ${APP_PATH}
 cp -rf pistat /usr/local/bin/pistat
 cp -rf pi-temp /usr/local/bin/pi-temp
 cp -rf pikvm-info /usr/local/bin/pikvm-info
@@ -730,8 +771,3 @@ sed -i -e "s/localhost.localdomain/`hostname`/g" /etc/kvmd/meta.yaml
 
 ### restore htpasswd from previous install, if applies
 if [ -e /etc/kvmd/htpasswd.save ]; then cp /etc/kvmd/htpasswd.save /etc/kvmd/htpasswd; fi
-
-fix-nfs-msd
-echo "-------------------------------------------------------------------------------"
-echo "-                完成PiKVM的安装，请完成后续Root密码修改等操作。                 -"
-echo "-------------------------------------------------------------------------------"
